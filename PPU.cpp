@@ -1,4 +1,3 @@
-#include "pch.h"
 #include "PPU.h"
 
 #include <iostream>
@@ -8,7 +7,7 @@ namespace PPU
 	uint8_t* registers;
 	uint8_t* ram;
 
-	void intitialize()
+	void initialize()
 	{
 		registers = new uint8_t[0x2000];
 		ram = new uint8_t[0x4000];
@@ -38,6 +37,10 @@ namespace PPU
 		{
 			return ram[(addr - 0x20) % 0x20]; // Read Palette RAM indexes every 0x20 increments.
 		}
+		else
+		{
+			throw "Could not read from PPU RAM at: " + addr;
+		}
 	}
 
 	void writeRam(uint16_t addr, uint8_t value)
@@ -53,6 +56,10 @@ namespace PPU
 		else if(addr >= 0x3F20 && addr < 0x4000)
 		{
 			ram[(addr - 0x20) % 0x20] = value; // Write to  Palette RAM indexes every 0x20 increments.
+		}
+		else
+		{
+			throw "Could not write to PPU RAM at: " + addr;
 		}
 	}
 }

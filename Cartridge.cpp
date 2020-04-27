@@ -1,4 +1,3 @@
-#include "pch.h"
 #include "Cartridge.h"
 #include "Mapper.h"
 #include "Mapper000.h"

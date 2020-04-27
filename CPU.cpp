@@ -1,4 +1,3 @@
-#include "pch.h"
 #include "CPU.h"
 #include "Cartridge.h"
 #include "PPU.h"
@@ -67,6 +66,10 @@ namespace CPU
 		{
 			return Cartridge::mapper->read(addr);
 		}
+		else
+		{
+			throw "Could not read from CPU RAM at address: " + addr;
+		}
 	}
 
 	/*
@@ -81,6 +84,10 @@ namespace CPU
 		else if(addr < 0x4000) // Addressing PPU registers
 		{
 			PPU::writeRegister(addr, value); // Write to non-mirrored address
+		}
+		else
+		{
+			throw "Could not write to CPU RAM at address: " + addr;
 		}
 	}
 

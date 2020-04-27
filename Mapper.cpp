@@ -1,5 +1,4 @@
 #pragma once
-#include "pch.h"
 #include "Mapper.h"
 
 Mapper::Mapper(uint8_t* rom) : rom(rom)
