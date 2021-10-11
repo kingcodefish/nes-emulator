@@ -1,16 +1,18 @@
 #include "CPU.h"
 #include "Cartridge.h"
 #include "PPU.h"
+#include "APU.h"
 
 #include <iostream>
 #include <string>
 
 /*
 * CPU Performance Rundown:
-* - CPU is powered on, setting the PC to $8000 and SP to 0 on boot.
+* - CPU is powered on, setting the PC to $8000 and SP to $00 on boot.
 * - CPU does initial setup, initializing RAM, Accumulator, X-Reg, and Y-Reg.
 * - CPU jumps to subroutine located at the Reset Interrupt registers and executes until RTI is reached.
 * - CPU jumps back to the ROM start location from the RTI command and begins executing instructions procedurally.
+* - A descending stack is used for the stack pointer.
 *
 * When interrupt occurs:
 * - Recognize interrupt request has occurred.
@@ -54,15 +56,19 @@ namespace CPU
 	*/
 	uint8_t read(uint16_t addr)
 	{
-		if(addr < 0x2000) // Addressing RAM
+		if (addr < 0x2000) // Addressing RAM
 		{
 			return ram[addr % 0x800]; // Read from non-mirrored address
 		}
-		else if(addr < 0x4000) // Addressing PPU registers
+		else if (addr < 0x4000) // Addressing PPU registers
 		{
 			return PPU::readRegister(addr);
 		}
-		else if(addr >= 0x8000) // Addressing PRG-ROM
+		else if (addr < 0x4018)
+		{
+			return APU::readRegister(addr);
+		}
+		else if (addr >= 0x8000) // Addressing PRG-ROM
 		{
 			return Cartridge::mapper->read(addr);
 		}
@@ -77,13 +83,17 @@ namespace CPU
 	*/
 	void write(uint16_t addr, uint8_t value)
 	{
-		if(addr < 0x2000) // Addressing RAM
+		if (addr < 0x2000) // Addressing RAM
 		{
 			ram[addr % 0x800] = value; // Write to non-mirrored address
 		}
-		else if(addr < 0x4000) // Addressing PPU registers
+		else if (addr < 0x4000) // Addressing PPU registers
 		{
-			PPU::writeRegister(addr, value); // Write to non-mirrored address
+			PPU::writeRegister(addr, value);
+		}
+		else if (addr < 0x4018) // Addressing APU registers
+		{
+			APU::writeRegister(addr, value);
 		}
 		else
 		{
@@ -93,42 +103,44 @@ namespace CPU
 
 	/*
 	* Push to Stack a 16 or 8-bit value.
+	* 
+	* NOTE: When the stack is full, the stack pointer wraps back around because unsigned. ;)
 	*/
 	template<typename bitWidth>
 	void stackPush(bitWidth value)
 	{
-		if(sizeof(bitWidth) == sizeof(uint16_t))
+		if (sizeof(bitWidth) == sizeof(uint16_t))
 		{
-			write(0x0100 + SP, value & 0x0F);
-			write(0x0100 + ++SP, value >> 4);
-			++SP;
+			write(0x0100 + --SP, value >> 8);
+			write(0x0100 + --SP, value & 0xFF);
 		}
 		else
 		{
-			write(0x0100 + SP, value);
-			++SP;
+			write(0x0100 + --SP, value);
 		}
 	}
 
 	/*
 	* Pull from Stack a 16 or 8-bit value.
+	* 
+	* We maintain the stack pointer one past the top value.
 	*/
 	template<typename bitWidth>
 	bitWidth stackPull()
 	{
 		bitWidth value = 0;
 
-		if(sizeof(bitWidth) == sizeof(uint16_t))
+		if (sizeof(bitWidth) == sizeof(uint16_t))
 		{
-			value = read(0x100 + SP - 1) << 4;
-			value += read(0x100 + SP - 2);
-			write(0x0100 + --SP, 0);
-			write(0x0100 + --SP, 0);
+			value = read(0x100 + SP);
+			value += read(0x100 + SP + 1) << 8;
+			write(0x0100 + SP++, 0);
+			write(0x0100 + SP++, 0);
 		}
 		else
 		{
-			value = read(0x100 + SP - 1);
-			write(0x0100 + --SP, 0);
+			value = read(0x100 + SP);
+			write(0x0100 + SP++, 0);
 		}
 
 		return value;
@@ -160,13 +172,16 @@ namespace CPU
 			addr = (read(++PC) + x_reg) % 0xFF;
 			break;
 		case ABSOL:
-			addr = read(++PC) + (read(++PC) << 8);
+			addr = read(++PC);
+			addr += read(++PC) << 8;
 			break;
 		case ABSIX:
-			addr = read(++PC) + (read(++PC) << 8) + x_reg;
+			addr = read(++PC);
+			addr += read(++PC) << 8 + x_reg;
 			break;
 		case ABSIY:
-			addr = read(++PC) + (read(++PC) << 8) + y_reg;
+			addr = read(++PC);
+			addr += read(++PC) << 8 + y_reg;
 			break;
 		case INDIN:
 			addr = read((read(++PC) + x_reg) % 0xFF) + (read((read(PC) + x_reg + 1) % 0xFF) << 8);
@@ -224,13 +239,16 @@ namespace CPU
 			addr = (read(++PC) + x_reg) % 0xFF;
 			break;
 		case ABSOL:
-			addr = read(++PC) + (read(++PC) << 8);
+			addr = read(++PC);
+			addr += read(++PC) << 8;
 			break;
 		case ABSIX:
-			addr = read(++PC) + (read(++PC) << 8) + x_reg;
+			addr = read(++PC);
+			addr += read(++PC) << 8 + x_reg;
 			break;
 		case ABSIY:
-			addr = read(++PC) + (read(++PC) << 8) + y_reg;
+			addr = read(++PC);
+			addr += read(++PC) << 8 + y_reg;
 			break;
 		case INDIN:
 			addr = read((read(++PC) + x_reg) % 0xFF) + (read((read(PC) + x_reg + 1) % 0xFF) << 8);
@@ -280,13 +298,15 @@ namespace CPU
 			write(addr, value << 1);
 			break;
 		case ABSOL:
-			addr = read(++PC) + (read(++PC) << 8);
+			addr = read(++PC);
+			addr += read(++PC) << 8;
 			value = read(addr);
 			status.$carry = value >> 7;
 			write(addr, value << 1);
 			break;
 		case ABSIX:
-			addr = read(++PC) + (read(++PC) << 8) + x_reg;
+			addr = read(++PC);
+			addr += read(++PC) << 8 + x_reg;
 			value = read(addr);
 			status.$carry = value >> 7;
 			write(addr, value << 1);
@@ -360,7 +380,8 @@ namespace CPU
 			addr = read(++PC);
 			break;
 		case ABSOL:
-			addr = read(++PC) + (read(++PC) << 8);
+			addr = read(++PC);
+			addr += read(++PC) << 8;
 			break;
 		}
 		value = read(addr);
@@ -518,13 +539,16 @@ namespace CPU
 			addr = (read(++PC) + x_reg) % 0xFF;
 			break;
 		case ABSOL:
-			addr = read(++PC) + (read(++PC) << 8);
+			addr = read(++PC);
+			addr += read(++PC) << 8;
 			break;
 		case ABSIX:
-			addr = read(++PC) + (read(++PC) << 8) + x_reg;
+			addr = read(++PC);
+			addr += read(++PC) << 8 + x_reg;
 			break;
 		case ABSIY:
-			addr = read(++PC) + (read(++PC) << 8) + y_reg;
+			addr = read(++PC);
+			addr += read(++PC) << 8 + y_reg;
 			break;
 		case INDIN:
 			addr = read((read(++PC) + x_reg) % 0xFF) + (read((read(PC) + x_reg + 1) % 0xFF) << 8);
@@ -566,7 +590,8 @@ namespace CPU
 			addr = read(++PC);
 			break;
 		case ABSOL:
-			addr = read(++PC) + (read(++PC) << 8);
+			addr = read(++PC);
+			addr += read(++PC) << 8;
 			break;
 		}
 		value = read(addr);
@@ -602,7 +627,8 @@ namespace CPU
 			addr = read(++PC);
 			break;
 		case ABSOL:
-			addr = read(++PC) + (read(++PC) << 8);
+			addr = read(++PC);
+			addr += read(++PC) << 8;
 			break;
 		}
 		value = read(addr);
@@ -638,10 +664,12 @@ namespace CPU
 			addr = (read(++PC) + x_reg) % 0xFF;
 			break;
 		case ABSOL:
-			addr = read(++PC) + (read(++PC) << 8);
+			addr = read(++PC);
+			addr += read(++PC) << 8;
 			break;
 		case ABSIX:
-			addr = read(++PC) + (read(++PC) << 8) + x_reg;
+			addr = read(++PC);
+			addr += read(++PC) << 8 + x_reg;
 			break;
 		}
 		value = read(addr) - 1;
@@ -714,13 +742,16 @@ namespace CPU
 			addr = (read(++PC) + x_reg) % 0xFF;
 			break;
 		case ABSOL:
-			addr = read(++PC) + (read(++PC) << 8);
+			addr = read(++PC);
+			addr += read(++PC) << 8;
 			break;
 		case ABSIX:
-			addr = read(++PC) + (read(++PC) << 8) + x_reg;
+			addr = read(++PC);
+			addr += read(++PC) << 8 + x_reg;
 			break;
 		case ABSIY:
-			addr = read(++PC) + (read(++PC) << 8) + y_reg;
+			addr = read(++PC);
+			addr += read(++PC) << 8 + y_reg;
 			break;
 		case INDIN:
 			addr = read((read(++PC) + x_reg) % 0xFF) + (read((read(PC) + x_reg + 1) % 0xFF) << 8);
@@ -760,10 +791,12 @@ namespace CPU
 			addr = (read(++PC) + x_reg) % 0xFF;
 			break;
 		case ABSOL:
-			addr = read(++PC) + (read(++PC) << 8);
+			addr = read(++PC);
+			addr += read(++PC) << 8;
 			break;
 		case ABSIX:
-			addr = read(++PC) + (read(++PC) << 8) + x_reg;
+			addr = read(++PC);
+			addr += read(++PC) << 8 + x_reg;
 			break;
 		}
 		value = read(addr) + 1;
@@ -831,7 +864,8 @@ namespace CPU
 		switch(MODE)
 		{
 		case ABSOL:
-			addr = read(++PC) + (read(++PC) << 8);
+			addr = read(++PC);
+			addr += read(++PC) << 8;
 			break;
 		case INDIA:
 			addr = read(read(++PC) + (read(++PC) << 8)) + read(read(++PC) + (read(++PC) << 8) + 1);
@@ -875,10 +909,16 @@ namespace CPU
 			addr = (read(++PC) + x_reg) % 0xFF;
 			break;
 		case ABSOL:
-			addr = read(++PC) + (read(++PC) << 8);
+			addr = read(++PC);
+			addr += read(++PC) << 8;
 			break;
 		case ABSIX:
-			addr = read(++PC) + (read(++PC) << 8) + x_reg;
+			addr = read(++PC);
+			addr += read(++PC) << 8 + x_reg;
+			break;
+		case ABSIY:
+			addr = read(++PC);
+			addr += read(++PC) << 8 + y_reg;
 			break;
 		case INDIN:
 			addr = read((read(++PC) + x_reg) % 0xFF) + (read((read(PC) + x_reg + 1) % 0xFF) << 8);
@@ -924,10 +964,12 @@ namespace CPU
 			addr = (read(++PC) + y_reg) % 0xFF;
 			break;
 		case ABSOL:
-			addr = read(++PC) + (read(++PC) << 8);
+			addr = read(++PC);
+			addr += read(++PC) << 8;
 			break;
 		case ABSIY:
-			addr = read(++PC) + (read(++PC) << 8) + y_reg;
+			addr = read(++PC);
+			addr += read(++PC) << 8 + y_reg;
 			break;
 		}
 		value = read(addr);
@@ -967,10 +1009,12 @@ namespace CPU
 			addr = (read(++PC) + x_reg) % 0xFF;
 			break;
 		case ABSOL:
-			addr = read(++PC) + (read(++PC) << 8);
+			addr = read(++PC);
+			addr += read(++PC) << 8;
 			break;
 		case ABSIX:
-			addr = read(++PC) + (read(++PC) << 8) + x_reg;
+			addr = read(++PC);
+			addr += read(++PC) << 8 + x_reg;
 			break;
 		}
 		value = read(addr);
@@ -1388,13 +1432,16 @@ namespace CPU
 			addr = (read(++PC) + x_reg) % 0xFF;
 			break;
 		case ABSOL:
-			addr = read(++PC) + (read(++PC) << 8);
+			addr = read(++PC);
+			addr += read(++PC) << 8;
 			break;
 		case ABSIX:
-			addr = read(++PC) + (read(++PC) << 8) + x_reg;
+			addr = read(++PC);
+			addr += read(++PC) << 8 + x_reg;
 			break;
 		case ABSIY:
-			addr = read(++PC) + (read(++PC) << 8) + y_reg;
+			addr = read(++PC);
+			addr += read(++PC) << 8 + y_reg;
 			break;
 		case INDIN:
 			addr = read((read(++PC) + x_reg) % 0xFF) + (read((read(PC) + x_reg + 1) % 0xFF) << 8);
@@ -1425,7 +1472,8 @@ namespace CPU
 			addr = (read(++PC) + y_reg) % 0xFF;
 			break;
 		case ABSOL:
-			addr = read(++PC) + (read(++PC) << 8);
+			addr = read(++PC);
+			addr += read(++PC) << 8;
 			break;
 		}
 		value = x_reg;
@@ -1450,7 +1498,8 @@ namespace CPU
 			addr = (read(++PC) + x_reg) % 0xFF;
 			break;
 		case ABSOL:
-			addr = read(++PC) + (read(++PC) << 8);
+			addr = read(++PC);
+			addr += read(++PC) << 8;
 			break;
 		}
 		value = y_reg;
@@ -1820,9 +1869,12 @@ namespace CPU
 		x_reg = 0x00;
 		y_reg = 0x00;
 
-		// Jump to Reset Interrupt (0xFFFA and 0xFFFB), retrieve address, jump to subroutine...
-		PC = 0xFFF9;
-		JSR<IMPLI>();
+		// This is the RESET sequence, which is not a write cycle, so the stack pointer is moved like a BRK but no data is pushed.
+		// Jump to Reset Interrupt ($FFFC and $FFFD), retrieve address, jump to subroutine...
+		uint16_t addr = read(0xFFFC) + (read(0xFFFD) << 8);
+		PC = addr;
+		stackPush<uint16_t>(0);
+		stackPush<uint8_t>(0);
 	}
 
 	/**
@@ -1832,12 +1884,8 @@ namespace CPU
 	{
 		// Do stuff to reset CPU
 		PC = 0x8000;
-		SP = 0;
+		SP = 0x00;
 
 		initialize();
-		while(Cartridge::loaded())
-		{
-			execute();
-		}
 	}
 }

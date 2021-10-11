@@ -1,7 +1,5 @@
 #include "PPU.h"
 
-#include <iostream>
-
 namespace PPU
 {
 	uint8_t* registers;
@@ -61,5 +59,10 @@ namespace PPU
 		{
 			throw "Could not write to PPU RAM at: " + addr;
 		}
+	}
+
+	void execute()
+	{
+
 	}
 }

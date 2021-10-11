@@ -2,9 +2,6 @@
 
 #include <vector>
 
-#define CYCLES_CROSS_PAGE_ADDS_ONE      (1 << 0)
-#define CYCLES_BRANCH_TAKEN_ADDS_ONE    (1 << 1)
-
 namespace CPU
 {
 

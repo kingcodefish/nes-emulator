@@ -10,6 +10,7 @@ set(${PROJECT_NAME}_HEADERS
 	"Mapper.h"
 	"Mapper000.h"
 	"Mapper001.h"
+	"APU.h"
 	"PPU.h"
 	"RAM.h"
 )
@@ -21,6 +22,7 @@ set(${PROJECT_NAME}_SOURCES
 	"Mapper.cpp"
 	"Mapper001.cpp"
 	"NESEmulator.cpp"
+	"APU.cpp"
 	"PPU.cpp"
 	"RAM.cpp"
 )
