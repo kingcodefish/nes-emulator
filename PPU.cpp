@@ -2,13 +2,15 @@
 
 namespace PPU
 {
-	uint8_t* registers;
-	uint8_t* ram;
+	uint8_t* registers; // Registers for status, etc.
+	uint8_t* vram; // Video RAM
+	uint8_t* oam; // Object Attribute Memory
 
 	void initialize()
 	{
-		registers = new uint8_t[0x2000];
-		ram = new uint8_t[0x4000];
+		registers = new uint8_t[0x2000]; // why is this 2000?
+		vram = new uint8_t[0x4000];
+		oam = new uint8_t[0x256];
 	}
 
 	uint8_t readRegister(uint16_t addr)
@@ -25,15 +27,15 @@ namespace PPU
 	{
 		if(addr < 0x3000 || addr >= 0x3F00 && addr < 0x3F20)
 		{
-			return ram[addr]; // All addressable locations
+			return vram[addr]; // All addressable locations
 		}
 		else if(addr >= 0x3000 && addr < 0x3F00)
 		{
-			return ram[addr - 0x1000]; // Read from non-mirrored address.
+			return vram[addr - 0x1000]; // Read from non-mirrored address.
 		}
 		else if(addr >= 0x3F20 && addr < 0x4000)
 		{
-			return ram[(addr - 0x20) % 0x20]; // Read Palette RAM indexes every 0x20 increments.
+			return vram[(addr - 0x20) % 0x20]; // Read Palette RAM indexes every 0x20 increments.
 		}
 		else
 		{
@@ -45,20 +47,29 @@ namespace PPU
 	{
 		if(addr < 0x3000 || addr >= 0x3F00 && addr < 0x3F20)
 		{
-			ram[addr] = value; // All addressable locations
+			vram[addr] = value; // All addressable locations
 		}
 		else if(addr >= 0x3000 && addr < 0x3F00)
 		{
-			ram[addr - 0x1000] = value; // Write to non-mirrored address.
+			vram[addr - 0x1000] = value; // Write to non-mirrored address.
 		}
 		else if(addr >= 0x3F20 && addr < 0x4000)
 		{
-			ram[(addr - 0x20) % 0x20] = value; // Write to  Palette RAM indexes every 0x20 increments.
+			vram[(addr - 0x20) % 0x20] = value; // Write to Palette RAM indexes every 0x20 increments.
 		}
 		else
 		{
 			throw "Could not write to PPU RAM at: " + addr;
 		}
+	}
+
+	/*
+	* Copy the block pointed to by data into OAM.
+	* This is the result of setting the DMA register at $4014.
+	*/
+	void dma(uint8_t* data)
+	{
+		memcpy(&oam, &data, 256); // Size of uint8 is implied.
 	}
 
 	void execute()

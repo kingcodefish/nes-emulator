@@ -11,20 +11,23 @@
 #include "CPU.h"
 #include "Cartridge.h"
 
+#define WIDTH 256
+#define HEIGHT 240
+
 int main(int argc, char* argv[])
 {
 	SDL_Event evt;
 	bool running = true;
 
-	int* pixels = new int[256*240];
-	int pitch = 256 * 4;
+	int* pixels = new int[WIDTH * HEIGHT];
+	int pitch = WIDTH * 4;
 
 	SDL_Init(SDL_INIT_VIDEO);
 
 	SDL_Window* window = SDL_CreateWindow
 	("NES Emulator", // window's title
 		100, 100, // coordinates on the screen, in pixels, of the window's upper left corner
-		256 * 2, 240 * 2, // window's length and height in pixels  
+		WIDTH * 2, HEIGHT * 2, // window's length and height in pixels  
 		SDL_WINDOW_OPENGL);
 
 	SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
@@ -33,8 +36,8 @@ int main(int argc, char* argv[])
 	SDL_Texture* buffer = SDL_CreateTexture(renderer,
 		SDL_PIXELFORMAT_RGBA8888,
 		SDL_TEXTUREACCESS_STREAMING,
-		256,
-		240);
+		WIDTH,
+		HEIGHT);
 	SDL_LockTexture(buffer,
 		NULL,      // NULL means the *whole texture* here.
 		(void**)(&pixels),
@@ -45,7 +48,7 @@ int main(int argc, char* argv[])
 	SDL_UnlockTexture(buffer);
 
 	//std::string filename("C:\\MyWork\\Super_mario_brothers.nes");
-	std::string filename("C:\\MyWork\\ex0.dasm.rom");
+	std::string filename("C:\\MyWork\\ex1.dasm.rom");
 
 	Cartridge::load(filename.c_str());
 

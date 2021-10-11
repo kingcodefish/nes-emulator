@@ -38,12 +38,12 @@ namespace CPU
 	uint8_t SP = 0x00; // Stack Pointer
 	struct status {
 		uint8_t $carry     : 1,
-						$zero      : 1,
-						$interrupt : 1,
-						$decimal   : 1,
-						$break     : 1,
-						$overflow  : 1,
-						$negative  : 1;
+				$zero      : 1,
+				$interrupt : 1,
+				$decimal   : 1,
+				$break     : 1,
+				$overflow  : 1,
+				$negative  : 1;
 	} status;
 
 	uint8_t* ram;
@@ -68,6 +68,14 @@ namespace CPU
 		{
 			return APU::readRegister(addr);
 		}
+		else if (addr <= 0x6000)
+		{
+			return 0; // Disabled
+		}
+		else if (addr < 0x8000)
+		{
+			return ram[addr]; // Battery-backed Save or Work RAM
+		}
 		else if (addr >= 0x8000) // Addressing PRG-ROM
 		{
 			return Cartridge::mapper->read(addr);
@@ -91,9 +99,21 @@ namespace CPU
 		{
 			PPU::writeRegister(addr, value);
 		}
+		else if (addr == 0x4014) // DMA PPU register
+		{
+			PPU::dma(&ram[value << 8]); // Copy the 256-byte block at the indirect address ($XX00-$XXFF).
+		}
 		else if (addr < 0x4018) // Addressing APU registers
 		{
 			APU::writeRegister(addr, value);
+		}
+		else if (addr <= 0x6000)
+		{
+			return; // Disabled
+		}
+		else if (addr < 0x8000)
+		{
+			ram[addr] = value; // Battery-backed Save or Work RAM
 		}
 		else
 		{
@@ -444,7 +464,6 @@ namespace CPU
 
 	/*
 	* Force Interrupt
-	* - To be implemented.
 	*/
 	template<addressing_mode_e MODE>
 	void BRK()
@@ -452,6 +471,9 @@ namespace CPU
 		// The program counter and processor status are pushed on the stack then the
 		// IRQ interrupt vector at $FFFE/F is loaded into the PC
 		status.$break = 1;
+		stackPush(PC);
+		PHP<IMPLI>();
+		PC = read(0xFFFF) << 8 + read(0xFFFE);
 	}
 
 	/*
@@ -1306,7 +1328,7 @@ namespace CPU
 	void RTI()
 	{
 		PLP<IMPLI>(); // Pull processor flags from stack...
-		PC = stackPull<uint16_t>(); // ...followed by the program counter. PC - 1???
+		PC = stackPull<uint16_t>() - 1; // ...followed by the program counter. PC - 1???
 	}
 
 	/*
@@ -1315,7 +1337,7 @@ namespace CPU
 	template<addressing_mode_e MODE>
 	void RTS()
 	{
-		PC = stackPull<uint16_t>(); // Pull the program counter. PC - 1???
+		PC = stackPull<uint16_t>() - 1; // Pull the program counter. PC - 1???
 	}
 
 	/*
@@ -1627,13 +1649,13 @@ namespace CPU
 	{
 		if(read(PC) == 0x69)
 		{
-			std::cout << "Instruction: Add With Carry (0x69 IMMED) with " << (int)read(PC+1);
+			//std::cout << "Instruction: Add With Carry (0x69 IMMED) with " << (int)read(PC+1);
 		}
 		else
 		{
-			std::cout << "Instruction: " << (int)read(PC);
+			//std::cout << "Instruction: " << (int)read(PC) << std::endl;
 		}
-		std::cout << "\nProgram Counter: " << (int)PC
+		/*std::cout << "\nProgram Counter: " << (int)PC
 			<< "\nStack Pointer: " << (int)SP
 			<< "\nAccumulator: " << (int)accum
 			<< "\nX Register: " << (int)x_reg
@@ -1644,7 +1666,7 @@ namespace CPU
 			<< "\nDecimal Flag: " << (int)status.$decimal
 			<< "\nBreak Flag: " << (int)status.$break
 			<< "\nOverflow Flag: " << (int)status.$overflow
-			<< "\nNegative Flag: " << (int)status.$negative << "\n\n";
+			<< "\nNegative Flag: " << (int)status.$negative << "\n\n";*/
 
 		switch(read(PC))
 		{
